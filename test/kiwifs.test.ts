@@ -158,6 +158,58 @@ describe("KiwiFS client", () => {
 			server.stop(true);
 		}
 	});
+
+	test("creates and lists spaces outside /api/kiwi", async () => {
+		const seen: string[] = [];
+		const server = Bun.serve({
+			port: 0,
+			async fetch(request) {
+				const url = new URL(request.url);
+				seen.push(`${request.method} ${url.pathname}`);
+				if (url.pathname === "/api/spaces" && request.method === "GET") {
+					return Response.json({
+						spaces: [{ name: "default", root: "/data", fileCount: 1, sizeBytes: 10 }],
+					});
+				}
+				if (url.pathname === "/api/spaces" && request.method === "POST") {
+					const body = (await request.json()) as { name?: string; template?: string };
+					expect(body.name).toBe("research");
+					expect(body.template).toBe("research");
+					return Response.json({ name: "research", root: "/data/.spaces/research", fileCount: 9 });
+				}
+				if (url.pathname === "/api/init-templates") {
+					return Response.json({
+						templates: [{ id: "research", label: "Research", description: "Research notes" }],
+					});
+				}
+				return new Response("missing", { status: 404 });
+			},
+		});
+
+		try {
+			const client = new KiwiClient({
+				url: `http://127.0.0.1:${server.port}`,
+				urlExplicit: true,
+				root: "",
+				rootExplicit: false,
+				apiKey: "",
+				actor: "agent:test",
+				space: "",
+				mode: "remote",
+				bin: "kiwifs",
+				injectContext: true,
+				timeoutMs: 5_000,
+			});
+			expect(await client.listSpaces()).toMatchObject({ spaces: [{ name: "default" }] });
+			expect(await client.createSpace("research", { template: "research" })).toMatchObject({ name: "research" });
+			expect(await client.initTemplates()).toMatchObject({ templates: [{ id: "research" }] });
+			expect(() => client.createSpace("bad/name")).toThrow(KiwiError);
+			expect(seen).toContain("GET /api/spaces");
+			expect(seen).toContain("POST /api/spaces");
+		} finally {
+			server.stop(true);
+		}
+	});
 });
 
 describe("tools and prompt", () => {
@@ -177,7 +229,17 @@ describe("tools and prompt", () => {
 		};
 		const names = createTools({} as KiwiClient, z).map((tool) => tool.name);
 		expect(new Set(names).size).toBe(names.length);
-		for (const required of ["kiwi_context", "kiwi_brief", "kiwi_read", "kiwi_write", "kiwi_search", "kiwi_remember"]) {
+		for (const required of [
+			"kiwi_context",
+			"kiwi_brief",
+			"kiwi_read",
+			"kiwi_write",
+			"kiwi_search",
+			"kiwi_remember",
+			"kiwi_space_create",
+			"kiwi_spaces_list",
+			"kiwi_init_templates",
+		]) {
 			expect(names).toContain(required);
 		}
 	});
@@ -226,7 +288,11 @@ describe("tools and prompt", () => {
 		const once = promptBlocks(["You are a coding agent. ".repeat(20)], addition);
 		expect(once.at(-1)).toContain("kiwi_context");
 		expect(once.at(-1)).toContain("if_match");
+		expect(once.at(-1)).toContain("Never use omp edit");
 		expect(promptBlocks(once, addition)).toBe(once);
-		expect(formatRead("pages/auth.md", "hello", "abc", false, 100)).toContain("etag abc");
+		const read = formatRead("pages/auth.md", "hello", "9DFB3B4E3483FDBED03F3C5E9A5861E4218B3412", false, 100);
+		expect(read).toContain("if_match: 9DFB3B4E3483FDBED03F3C5E9A5861E4218B3412");
+		expect(read).toContain("Never use omp edit");
+		expect(read).not.toContain("pages/auth.md#9DFB");
 	});
 });

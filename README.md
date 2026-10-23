@@ -73,9 +73,10 @@ The `kiwifs` binary has to be on `PATH` for MCP. The `kiwi_*` tools only need th
 
 1. `kiwi_context` loads the schema, playbook, rules, and index. With `injectContext` on, that bundle is also added to the system prompt.
 2. `kiwi_brief` or `kiwi_search` looks up a question. `kiwi_search_hybrid` fuses keyword and vector results when a vector index exists.
-3. `kiwi_peek` and `kiwi_section` skim a page. `kiwi_read` returns the whole page and its etag.
-4. `kiwi_write` updates a page. Pass `if_match` so a concurrent edit is a conflict instead of a silent overwrite. `kiwi_append`, `kiwi_patch_frontmatter`, and `kiwi_bulk_write` cover logs, field updates, and multi-file commits.
+3. `kiwi_peek` and `kiwi_section` skim a page. `kiwi_read` returns the whole page and an `if_match` value.
+4. `kiwi_write` updates a page. Pass `if_match` so a concurrent edit is a conflict instead of a silent overwrite. Do not use omp `edit` or `write` on KiwiFS paths — those need a local 4-hex TAG, not a KiwiFS etag.
 5. `kiwi_lint` checks the page afterward. `kiwi_remember` stores an episode; `kiwi_forget` retires one without deleting it.
+6. `kiwi_space_create` / `kiwi_spaces_list` manage knowledge spaces. Set `KIWIFS_SPACE` (or plugin config `space`) before writing into a non-primary space.
 
 `/kiwi` runs the same operations from the prompt:
 

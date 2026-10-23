@@ -303,13 +303,60 @@ export function formatMemoryReport(payload: unknown): string {
 }
 
 export function formatRead(path: string, content: string, etag: string | undefined, unchanged: boolean, max: number): string {
-	if (unchanged) return `${path} is unchanged (etag ${etag ?? "unknown"}).`;
-	const header = `${path}${etag ? ` etag ${etag}` : ""}`;
-	return `${header}\n\n${clip(content, max)}`;
+	if (unchanged) {
+		return [
+			`KiwiFS page: ${path}`,
+			`if_match: ${etag ?? "unknown"}`,
+			"Unchanged since the last read. Do not use omp edit/write; call kiwi_write with if_match to update.",
+		].join("\n");
+	}
+	const lines = [
+		`KiwiFS page: ${path}`,
+		etag ? `if_match: ${etag}` : "if_match: (none — new or unread page)",
+		"Update with kiwi_write(path, content, if_match). Never use omp edit or write on this path; the if_match value is not an edit TAG.",
+		"",
+		clip(content, max),
+	];
+	return lines.join("\n");
 }
 
 export function formatWrite(path: string, etag: string | undefined, verb: string): string {
-	return `${verb} ${path}${etag ? ` (etag ${etag})` : ""}. Pass that etag as if_match before overwriting.`;
+	return [
+		`${verb} KiwiFS page ${path}.`,
+		etag ? `Next if_match: ${etag}` : "No if_match returned.",
+		"Pass that value as if_match on the next kiwi_write. Do not put it in an omp edit [PATH#TAG] header.",
+	].join(" ");
+}
+
+export function formatSpaces(payload: unknown): string {
+	if (!isRecord(payload) || !Array.isArray(payload.spaces)) return jsonBlock(payload);
+	const spaces = payload.spaces.filter(isRecord);
+	if (spaces.length === 0) return "No KiwiFS spaces registered.";
+	return [
+		"KiwiFS spaces:",
+		...spaces.map((space) => {
+			const name = stringOf(space.name) || "(unnamed)";
+			const root = stringOf(space.root);
+			const files = typeof space.fileCount === "number" ? `${space.fileCount} files` : "";
+			return `- ${name}${root ? ` → ${root}` : ""}${files ? ` (${files})` : ""}`;
+		}),
+		"",
+		"Create with kiwi_space_create. Target a non-primary space by setting KIWIFS_SPACE or omp plugin config space.",
+	].join("\n");
+}
+
+export function formatTemplates(payload: unknown): string {
+	if (!isRecord(payload) || !Array.isArray(payload.templates)) return jsonBlock(payload);
+	const templates = payload.templates.filter(isRecord);
+	if (templates.length === 0) return "No init templates.";
+	return templates
+		.map((template) => {
+			const id = stringOf(template.id);
+			const label = stringOf(template.label);
+			const description = stringOf(template.description);
+			return `- ${id}${label ? ` — ${label}` : ""}${description ? `: ${description}` : ""}`;
+		})
+		.join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

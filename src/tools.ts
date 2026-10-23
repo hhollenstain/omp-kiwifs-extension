@@ -14,6 +14,8 @@ import {
 	formatQuery,
 	formatRead,
 	formatSearch,
+	formatSpaces,
+	formatTemplates,
 	formatTree,
 	formatVersions,
 	formatWrite,
@@ -190,13 +192,13 @@ export function createTools(client: KiwiClient, z: Zod): KiwiTool[] {
 			name: "kiwi_read",
 			label: "KiwiFS Read",
 			description:
-				"Read one page and its etag. Pass if_match back to kiwi_write. Prefer kiwi_peek or kiwi_section unless you need the whole page.",
+				"Read one KiwiFS page. Returns an if_match value for kiwi_write. Never feed that value into omp edit [PATH#TAG]; KiwiFS pages are not local files. Prefer kiwi_peek or kiwi_section unless you need the whole page.",
 			approval: "read",
 			parameters: {
 				path: path(),
 				resolve_links: z.boolean().optional().describe("Rewrite wiki links to absolute URLs when a public URL is configured."),
 				metadata_only: z.boolean().optional().describe("Return parsed frontmatter instead of the body."),
-				if_not_etag: z.string().optional().describe("ETag from an earlier read. Returns unchanged when it still matches."),
+				if_not_etag: z.string().optional().describe("Previous if_match. Returns unchanged when the page still matches."),
 			},
 			async run(params, signal) {
 				const file = await client.read(
@@ -211,6 +213,7 @@ export function createTools(client: KiwiClient, z: Zod): KiwiTool[] {
 				return text(formatRead(file.path, file.content, file.etag, file.notModified, READ_CAP), {
 					path: file.path,
 					etag: file.etag,
+					if_match: file.etag,
 				});
 			},
 		}),
@@ -291,12 +294,12 @@ export function createTools(client: KiwiClient, z: Zod): KiwiTool[] {
 			name: "kiwi_write",
 			label: "KiwiFS Write",
 			description:
-				"Create or overwrite one page as a single git commit. When the page already exists, pass if_match from kiwi_read so a concurrent edit returns 409 instead of being lost. Include the frontmatter the schema requires.",
+				"Create or overwrite one KiwiFS page as a single git commit. This is the only way to edit KiwiFS content from omp — do not use the local edit or write tools. When the page already exists, pass if_match from kiwi_read. Include the frontmatter the schema requires.",
 			approval: "write",
 			parameters: {
 				path: path(),
 				content: z.string().describe("Full markdown file, including frontmatter."),
-				if_match: z.string().optional().describe("ETag the page must still have."),
+				if_match: z.string().optional().describe("Value labeled if_match from kiwi_read or the previous kiwi_write. Not an omp edit TAG."),
 				provenance: z.string().optional().describe("type:id recorded on derived-from, such as run:42 or ingest:rfc-6749."),
 				actor: z.string().optional().describe("Commit author. Defaults to the extension actor."),
 			},
@@ -542,6 +545,87 @@ export function createTools(client: KiwiClient, z: Zod): KiwiTool[] {
 			async run(params, signal) {
 				const payload = await client.changes(optionalString(params.since), limit(params.limit ?? 20, 20, 100), signal);
 				return text(formatChanges(payload), payload);
+			},
+		}),
+		tool(z, {
+			name: "kiwi_spaces_list",
+			label: "KiwiFS List Spaces",
+			description: "List registered knowledge spaces on the KiwiFS server. Use before creating a space or switching KIWIFS_SPACE.",
+			approval: "read",
+			parameters: {},
+			async run(_params, signal) {
+				const payload = await client.listSpaces(signal);
+				return text(formatSpaces(payload), payload);
+			},
+		}),
+		tool(z, {
+			name: "kiwi_space_get",
+			label: "KiwiFS Get Space",
+			description: "Inspect one registered space: root path, file count, and size.",
+			approval: "read",
+			parameters: {
+				name: z.string().describe("Space name, such as research or job-hunting."),
+			},
+			async run(params, signal) {
+				const payload = await client.getSpace(String(params.name), signal);
+				return text(jsonBlock(payload), payload);
+			},
+		}),
+		tool(z, {
+			name: "kiwi_space_create",
+			label: "KiwiFS Create Space",
+			description:
+				"Create and register a new knowledge space from an init template. Call kiwi_init_templates first if you need template ids. After create, set KIWIFS_SPACE or plugin config space to that name before writing pages into it.",
+			approval: "write",
+			parameters: {
+				name: z.string().describe("Unique space name. No /, \\, spaces, or dots."),
+				template: z.string().optional().describe("Init template id. Default blank. Examples: kb, memory, wiki, research, tasks."),
+				root: z.string().optional().describe("Folder on disk. Defaults to .spaces/{name} under the primary space."),
+			},
+			async run(params, signal) {
+				const payload = await client.createSpace(
+					String(params.name),
+					{
+						template: optionalString(params.template),
+						root: optionalString(params.root),
+					},
+					signal,
+				);
+				const name = String(params.name);
+				return text(
+					[
+						`Created KiwiFS space "${name}".`,
+						`Point the extension at it with KIWIFS_SPACE=${name} or: omp plugin config set omp-kiwifs-extension space ${name}`,
+						"Then call kiwi_context before writing pages.",
+						jsonBlock(payload, 4_000),
+					].join("\n"),
+					payload,
+				);
+			},
+		}),
+		tool(z, {
+			name: "kiwi_space_delete",
+			label: "KiwiFS Delete Space",
+			description:
+				"Unregister a space and soft-delete its folder (renamed with a .deleted- timestamp). Does not remove the primary space.",
+			approval: "write",
+			parameters: {
+				name: z.string().describe("Space name to delete."),
+			},
+			async run(params, signal) {
+				const payload = await client.deleteSpace(String(params.name), signal);
+				return text(`Deleted KiwiFS space "${String(params.name)}". Files were moved aside, not permanently erased.`, payload);
+			},
+		}),
+		tool(z, {
+			name: "kiwi_init_templates",
+			label: "KiwiFS Init Templates",
+			description: "List scaffolds available for kiwi_space_create (kb, memory, wiki, research, blank, and others).",
+			approval: "read",
+			parameters: {},
+			async run(_params, signal) {
+				const payload = await client.initTemplates(signal);
+				return text(formatTemplates(payload), payload);
 			},
 		}),
 	];
