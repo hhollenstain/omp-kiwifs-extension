@@ -1,0 +1,85 @@
+{
+  "name": "omp-kiwifs-extension",
+  "version": "1.0.0",
+  "description": "KiwiFS knowledge base for oh-my-pi: read, update, and look up context, plus the official KiwiFS MCP server.",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "src",
+    "bin",
+    "skills",
+    "rules",
+    ".mcp.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.0"
+  },
+  "omp": {
+    "extensions": ["./src/index.ts"],
+    "description": "Read, update, and look up a KiwiFS knowledge base from omp.",
+    "settings": {
+      "url": {
+        "type": "string",
+        "default": "http://127.0.0.1:3333",
+        "description": "KiwiFS server URL. KIWIFS_URL overrides this.",
+        "env": "KIWIFS_URL"
+      },
+      "root": {
+        "type": "string",
+        "description": "Knowledge directory for in-process MCP (kiwifs mcp --root). KIWIFS_ROOT overrides this.",
+        "env": "KIWIFS_ROOT"
+      },
+      "apiKey": {
+        "type": "string",
+        "secret": true,
+        "description": "Bearer token when the server requires an API key. KIWIFS_API_KEY overrides this.",
+        "env": "KIWIFS_API_KEY"
+      },
+      "actor": {
+        "type": "string",
+        "default": "agent:omp",
+        "description": "Author recorded on KiwiFS commits. KIWIFS_ACTOR overrides this.",
+        "env": "KIWIFS_ACTOR"
+      },
+      "space": {
+        "type": "string",
+        "description": "Non-primary space name. KIWIFS_SPACE overrides this.",
+        "env": "KIWIFS_SPACE"
+      },
+      "mode": {
+        "type": "enum",
+        "values": ["auto", "root", "remote"],
+        "default": "auto",
+        "description": "MCP transport. auto uses --root only when a root is set and no URL was set explicitly.",
+        "env": "KIWIFS_MODE"
+      },
+      "bin": {
+        "type": "string",
+        "default": "kiwifs",
+        "description": "kiwifs executable for the MCP server. KIWIFS_BIN overrides this.",
+        "env": "KIWIFS_BIN"
+      },
+      "injectContext": {
+        "type": "boolean",
+        "default": true,
+        "description": "Load schema, playbook, rules, and index into the system prompt.",
+        "env": "KIWIFS_INJECT_CONTEXT"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "default": 15000,
+        "min": 1000,
+        "max": 120000,
+        "description": "HTTP timeout for KiwiFS requests.",
+        "env": "KIWIFS_TIMEOUT_MS"
+      }
+    }
+  }
+}
