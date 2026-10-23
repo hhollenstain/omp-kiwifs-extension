@@ -156,10 +156,57 @@ export class KiwiClient {
 		}
 	}
 
+	private admin(pathname: string): string {
+		const suffix = pathname.startsWith("/") ? pathname : `/${pathname}`;
+		return `${this.origin()}/api${suffix}`;
+	}
+
 	async health(signal?: AbortSignal): Promise<{ status: string; version?: string }> {
 		const response = await this.send(`${this.origin()}/healthz`, { method: "GET" }, signal);
 		const parsed = this.parseJson<{ status?: string; version?: string }>(response.text, "/healthz");
 		return { status: parsed.status ?? "ok", version: parsed.version };
+	}
+
+	async listSpaces(signal?: AbortSignal): Promise<unknown> {
+		const response = await this.send(this.admin("/spaces"), { method: "GET" }, signal);
+		return this.parseJson(response.text, "/spaces");
+	}
+
+	async getSpace(name: string, signal?: AbortSignal): Promise<unknown> {
+		const cleaned = spaceName(name);
+		const response = await this.send(this.admin(`/spaces/${encodeURIComponent(cleaned)}`), { method: "GET" }, signal);
+		return this.parseJson(response.text, `/spaces/${cleaned}`);
+	}
+
+	async createSpace(
+		name: string,
+		options?: { root?: string; template?: string },
+		signal?: AbortSignal,
+	): Promise<unknown> {
+		const body: Record<string, string> = { name: spaceName(name) };
+		if (options?.root?.trim()) body.root = options.root.trim();
+		if (options?.template?.trim()) body.template = options.template.trim();
+		const response = await this.send(
+			this.admin("/spaces"),
+			{ method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } },
+			signal,
+		);
+		return this.parseJson(response.text, "/spaces");
+	}
+
+	async deleteSpace(name: string, signal?: AbortSignal): Promise<unknown> {
+		const cleaned = spaceName(name);
+		const response = await this.send(
+			this.admin(`/spaces/${encodeURIComponent(cleaned)}`),
+			{ method: "DELETE" },
+			signal,
+		);
+		return this.parseJson(response.text, `/spaces/${cleaned}`);
+	}
+
+	async initTemplates(signal?: AbortSignal): Promise<unknown> {
+		const response = await this.send(this.admin("/init-templates"), { method: "GET" }, signal);
+		return this.parseJson(response.text, "/init-templates");
 	}
 
 	async context(signal?: AbortSignal): Promise<{ schema: string; playbook: string; index: string; rules: string }> {
@@ -453,6 +500,15 @@ export class KiwiClient {
 
 function stringField(value: unknown): string {
 	return typeof value === "string" ? value : "";
+}
+
+function spaceName(input: string): string {
+	const name = String(input ?? "").trim();
+	if (!name) throw new KiwiError("space name is required");
+	if (/[./\\\s]/.test(name)) {
+		throw new KiwiError(`invalid space name "${input}": cannot contain /, \\, spaces, or dots`);
+	}
+	return name;
 }
 
 function yamlScalar(value: string): string {
